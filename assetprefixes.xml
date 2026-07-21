@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+  <name>Asset Prefixes</name>
+  <key>assetprefixes</key>
+  <state>alpha</state>
+  <description>
+    <short>
+        <en>Automatically assigns sequential numbered prefixes to assets on creation</en>
+        <pt>Atribui automaticamente prefixos numerados sequenciais a ativos na criação</pt>
+    </short>
+    <long>
+      <pt>
+        O plugin Asset Prefix permite definir prefixos numerados sequenciais para ativos,
+        substituindo automaticamente valores de campos (nativos ou customizados) no momento
+        da criação do ativo, com base em um contador incremental configurável.
+      </pt>
+      <en>
+        The Asset Prefix plugin allows defining sequential numbered prefixes for assets,
+        automatically substituting field values (native or custom) at asset creation time,
+        based on a configurable incremental counter.
+      </en>
+    </long>
+  </description>
+  <homepage>https://github.com/plss-github/assetprefixes</homepage>
+  <download>https://github.com/plss-github/assetprefixes/releases</download>
+  <issues>https://github.com/plss-github/assetprefixes/issues</issues>
+  <readme>https://github.com/plss-github/assetprefixes</readme>
+  <authors>
+    <author>Ampris</author>
+  </authors>
+  <versions>
+    <version>
+      <num>1.0.0</num>
+      <compatibility>~10.0.0</compatibility>
+      <compatibility>~11.0.0</compatibility>
+      <download_url>https://github.com/plss-github/assetprefixes/releases/download/1.0.0/assetprefixes.tar.gz</download_url>
+    </version>
+  </versions>
+  <langs>
+    <lang>en_GB</lang>
+    <lang>pt_BR</lang>
+  </langs>
+  <license>GPL v2+</license>
+  <tags>
+    <en>
+        <tag>asset prefix</tag>
+        <tag>numbering</tag>
+    </en>
+    <pt>
+        <tag>prefixo de ativo</tag>
+        <tag>numeração</tag>
+    </pt>
+  </tags>
+</root>

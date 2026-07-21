@@ -7,12 +7,12 @@ if (!defined('GLPI_ROOT')) {
 Session::checkRight('config', READ);
 
 Html::header(
-  PluginAssetprefixesPrefixRule::getTypeName(Session::getPluralNumber()),
+  PluginAssetprefixesPrefix::getTypeName(Session::getPluralNumber()),
   $_SERVER['PHP_SELF'],
   'config',
-  'pluginassetprefixesprefixrule'
+  'pluginassetprefixesprefix'
 );
 
-Search::show('PluginAssetprefixesPrefixRule');
+Search::show('PluginAssetprefixesPrefix');
 
 Html::footer();

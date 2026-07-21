@@ -1,0 +1,295 @@
+# Translation of assetprefixes plugin for GLPI
+# Copyright (C) 2026 Ampris
+# This file is distributed under the same license as the assetprefixes package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: assetprefixes 1.0\n"
+"POT-Creation-Date: 2026-07-20 00:00-0300\n"
+"PO-Revision-Date: 2026-07-20 00:00-0300\n"
+"Last-Translator: \n"
+"Language-Team: English (United Kingdom) \n"
+"Language: en_GB\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: inc/config.class.php:10
+msgid "Asset Prefixes"
+msgstr "Asset Prefixes"
+
+#: inc/config.class.php:82
+msgid "Validar unicidade do valor gerado antes de gravar"
+msgstr "Validate uniqueness of the generated value before saving"
+
+#: inc/config.class.php
+msgid "Avança o contador se o valor já existir em um campo nativo alvo (não verifica campos customizados)."
+msgstr "Advances the counter if the value already exists in a native target field (does not check custom fields)."
+
+#: inc/config.class.php:88 inc/config.class.php:89
+msgctxt "button"
+msgid "Save"
+msgstr "Save"
+
+#: inc/prefix.class.php:13
+msgid "Família de prefixo"
+msgid_plural "Famílias de prefixo"
+msgstr[0] "Prefix family"
+msgstr[1] "Prefix families"
+
+#: inc/prefix.class.php:26
+msgid "Computer"
+msgid_plural "Computers"
+msgstr[0] "Computer"
+msgstr[1] "Computers"
+
+#: inc/prefix.class.php:27
+msgid "Monitor"
+msgid_plural "Monitors"
+msgstr[0] "Monitor"
+msgstr[1] "Monitors"
+
+#: inc/prefix.class.php:28
+msgid "Network device"
+msgstr "Network device"
+
+#: inc/prefix.class.php:29
+msgid "Peripheral"
+msgid_plural "Peripherals"
+msgstr[0] "Peripheral"
+msgstr[1] "Peripherals"
+
+#: inc/prefix.class.php:30
+msgid "Phone"
+msgid_plural "Phones"
+msgstr[0] "Phone"
+msgstr[1] "Phones"
+
+#: inc/prefix.class.php:31
+msgid "Printer"
+msgid_plural "Printers"
+msgstr[0] "Printer"
+msgstr[1] "Printers"
+
+#: inc/prefix.class.php:61
+msgid "Tipo de computador"
+msgstr "Computer type"
+
+#: inc/prefix.class.php:62
+msgid "Tipo de monitor"
+msgstr "Monitor type"
+
+#: inc/prefix.class.php:63
+msgid "Tipo de equipamento"
+msgstr "Equipment type"
+
+#: inc/prefix.class.php:64
+msgid "Tipo de periférico"
+msgstr "Peripheral type"
+
+#: inc/prefix.class.php:65
+msgid "Tipo de telefone"
+msgstr "Phone type"
+
+#: inc/prefix.class.php:66
+msgid "Tipo de impressora"
+msgstr "Printer type"
+
+#: inc/prefix.class.php:67 inc/prefixpattern.class.php:137 inc/prefixpattern.class.php:163
+msgid "Subtipo"
+msgstr "Subtype"
+
+#: inc/prefix.class.php:78 inc/prefixpattern.class.php:178
+msgid "Global (todos os subtipos)"
+msgstr "Global (all subtypes)"
+
+#: inc/prefix.class.php:81
+msgid "Sem subtipo disponível — prefixo global"
+msgstr "No subtype available — global prefix"
+
+#: inc/prefixpattern.class.php:172
+msgid "Mesmo padrão e contador serão aplicados a cada subtipo selecionado."
+msgstr "The same pattern and counter will be applied to each selected subtype."
+
+#: ajax/getFields.php:93
+msgid "Campos nativos"
+msgstr "Native fields"
+
+#: ajax/getFields.php:96
+msgid "Campos customizados"
+msgstr "Custom fields"
+
+#: inc/prefix.class.php:191
+msgid "Tipo de ativo não suportado."
+msgstr "Unsupported asset type."
+
+#: inc/prefix.class.php:200
+msgid "Já existe uma família de prefixo configurada para este tipo de ativo e entidade."
+msgstr "A prefix family is already configured for this asset type and entity."
+
+#: inc/prefix.class.php:230
+msgid "Characteristics"
+msgstr "Characteristics"
+
+#: inc/prefix.class.php:235 inc/prefix.class.php:291
+msgid "Name"
+msgstr "Name"
+
+#: inc/prefix.class.php:243 inc/prefix.class.php:311
+msgid "Tipo de ativo"
+msgstr "Asset type"
+
+#: inc/prefix.class.php:251 inc/prefix.class.php:293 inc/prefixpattern.class.php:168
+msgid "Active"
+msgstr "Active"
+
+#: inc/prefix.class.php:298
+msgid "Entity"
+msgstr "Entity"
+
+#: inc/prefix.class.php:302
+msgid "Sub-entities"
+msgstr "Sub-entities"
+
+#: inc/prefix.class.php:343
+msgid "Padrões por subtipo"
+msgstr "Patterns by subtype"
+
+#: inc/prefix.class.php:344
+msgid "Campos alvo"
+msgstr "Target fields"
+
+#: inc/prefixfield.class.php:11
+msgid "Campo alvo"
+msgid_plural "Campos alvo"
+msgstr[0] "Target field"
+msgstr[1] "Target fields"
+
+#: inc/prefixfield.class.php:70
+msgid "Adicionar campo alvo"
+msgstr "Add target field"
+
+#: inc/prefixfield.class.php:73 inc/prefixfield.class.php:120
+msgid "Origem"
+msgstr "Source"
+
+#: inc/prefixfield.class.php:76 inc/prefixfield.class.php:134
+msgid "Campo nativo"
+msgstr "Native field"
+
+#: inc/prefixfield.class.php:77 inc/prefixfield.class.php:133
+msgid "Campo customizado"
+msgstr "Custom field"
+
+#: inc/prefixfield.class.php:81 inc/prefixfield.class.php:121
+msgid "Campo"
+msgstr "Field"
+
+#: inc/prefixfield.class.php:81
+msgid "Campos"
+msgstr "Fields"
+
+#: inc/prefixfield.class.php:127
+msgid "Nenhum campo alvo configurado."
+msgstr "No target field configured."
+
+#: inc/prefixfield.class.php:143 inc/prefixpattern.class.php:201
+msgid "Excluir"
+msgstr "Delete"
+
+#: inc/prefixfield.class.php:144
+msgid "Excluir este campo alvo?"
+msgstr "Delete this target field?"
+
+#: inc/prefixpattern.class.php:15
+msgid "Padrão por subtipo"
+msgid_plural "Padrões por subtipo"
+msgstr[0] "Pattern by subtype"
+msgstr[1] "Patterns by subtype"
+
+#: inc/prefixpattern.class.php:94
+msgid "O padrão deve conter ao menos um \"0\" para indicar a máscara de numeração."
+msgstr "The pattern must contain at least one \"0\" to indicate the numbering mask."
+
+#: inc/prefixpattern.class.php:107
+msgid "Já existe um padrão configurado para este subtipo nesta família."
+msgstr "A pattern is already configured for this subtype in this family."
+
+#: inc/prefixpattern.class.php:134
+msgid "Adicionar padrão"
+msgstr "Add pattern"
+
+#: inc/prefixpattern.class.php:142 inc/prefixpattern.class.php:164
+msgid "Padrão"
+msgstr "Pattern"
+
+#: inc/prefixpattern.class.php
+msgid "Contador"
+msgstr "Counter"
+
+#: inc/prefixpattern.class.php
+msgid "Último número já usado; o próximo ativo receberá contador + 1."
+msgstr "Last number already used; the next asset will receive counter + 1."
+
+#: inc/prefixpattern.class.php:167
+msgid "Próximo valor"
+msgstr "Next value"
+
+#: inc/prefixpattern.class.php:174
+msgid "Nenhum padrão configurado."
+msgstr "No pattern configured."
+
+#: inc/prefixpattern.class.php:193
+msgid "Yes"
+msgstr "Yes"
+
+#: inc/prefixpattern.class.php:193
+msgid "No"
+msgstr "No"
+
+#: inc/prefixpattern.class.php:202
+msgid "Excluir este padrão?"
+msgstr "Delete this pattern?"
+
+#: front/config.form.php:11
+msgid "Configurações salvas."
+msgstr "Settings saved."
+
+#: inc/resolver.class.php
+msgid "Assetprefixes: campo customizado não gravado — "
+msgstr "Assetprefixes: custom field not written — "
+
+#: inc/resolver.class.php
+#, php-format
+msgid "campo \"%1$s\" é do tipo \"%2$s\", incompatível (use texto/texto longo/rich text)."
+msgstr "field \"%1$s\" is of type \"%2$s\", incompatible (use text/long text/rich text)."
+
+#: inc/resolver.class.php
+#, php-format
+msgid "%1$s() falhou na classe \"%2$s\" (coluna \"%3$s\")."
+msgstr "%1$s() failed on class \"%2$s\" (column \"%3$s\")."
+
+#: inc/prefixfield.class.php
+msgid "Aplicar a"
+msgstr "Apply to"
+
+#: inc/prefixfield.class.php
+msgid "Aplica a"
+msgstr "Applies to"
+
+#: inc/prefixfield.class.php
+msgid "Toda a família (todos os padrões)"
+msgstr "Whole family (all patterns)"
+
+#: inc/prefixfield.class.php
+msgid "Toda a família"
+msgstr "Whole family"
+
+#: inc/prefixfield.class.php
+msgid "Restrinja a um padrão específico pra usar campos diferentes por subtipo."
+msgstr "Restrict to a specific pattern to use different fields per subtype."
+
+#: inc/prefixfield.class.php
+msgid "Padrão removido"
+msgstr "Pattern removed"

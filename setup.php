@@ -12,17 +12,24 @@ function plugin_init_assetprefixes() {
 
   $PLUGIN_HOOKS['csrf_compliant']['assetprefixes'] = true;
 
-  $PLUGIN_HOOKS['config_page']['assetprefixes'] = 'front/prefixrule.php';
-  $PLUGIN_HOOKS['menu_toadd']['assetprefixes']  = ['config' => 'PluginAssetprefixesPrefixRule'];
+  $PLUGIN_HOOKS['config_page']['assetprefixes'] = 'front/prefix.php';
+  $PLUGIN_HOOKS['menu_toadd']['assetprefixes']  = ['config' => 'PluginAssetprefixesPrefix'];
 
-  Plugin::registerClass('PluginAssetprefixesPrefixRule');
+  Plugin::registerClass('PluginAssetprefixesPrefix');
+  Plugin::registerClass('PluginAssetprefixesPrefixPattern');
+  Plugin::registerClass('PluginAssetprefixesPrefixField');
+  Plugin::registerClass('PluginAssetprefixesConfig', ['addtabon' => ['Config']]);
 
-  // Hook de criação de ativo para todos os tipos suportados
-  $hooks = [];
-  foreach (array_keys(PluginAssetprefixesPrefixRule::getSupportedItemtypes()) as $type) {
-    $hooks[$type] = ['PluginAssetprefixesPrefixRule', 'applyPrefix'];
+  // Resolução de prefixo: pre_item_add injeta valor nos campos nativos,
+  // item_add grava nos campos customizados (que só existem após o insert).
+  $pre_add_hooks = [];
+  $add_hooks     = [];
+  foreach (array_keys(PluginAssetprefixesPrefix::getSupportedItemtypes()) as $type) {
+    $pre_add_hooks[$type] = ['PluginAssetprefixesResolver', 'onPreItemAdd'];
+    $add_hooks[$type]     = ['PluginAssetprefixesResolver', 'onItemAdd'];
   }
-  $PLUGIN_HOOKS['item_add']['assetprefixes'] = $hooks;
+  $PLUGIN_HOOKS['pre_item_add']['assetprefixes'] = $pre_add_hooks;
+  $PLUGIN_HOOKS['item_add']['assetprefixes']     = $add_hooks;
 }
 
 function plugin_version_assetprefixes() {

@@ -7,16 +7,23 @@ function plugin_assetprefixes_install() {
 
   $migration = new Migration($version);
 
-  PluginAssetprefixesPrefixRule::installBaseData($migration);
-  PluginAssetprefixesPrefixEntry::installBaseData($migration);
+  PluginAssetprefixesPrefix::installBaseData($migration, $version);
+  PluginAssetprefixesPrefixPattern::installBaseData($migration, $version);
+  PluginAssetprefixesPrefixField::installBaseData($migration, $version);
 
   $migration->executeMigration();
+
+  PluginAssetprefixesConfig::setDefaults();
+
   return true;
 }
 
 function plugin_assetprefixes_uninstall() {
-  PluginAssetprefixesPrefixEntry::uninstall();
-  PluginAssetprefixesPrefixRule::uninstall();
+  PluginAssetprefixesPrefixField::uninstall();
+  PluginAssetprefixesPrefixPattern::uninstall();
+  PluginAssetprefixesPrefix::uninstall();
+
+  PluginAssetprefixesConfig::removeConfig();
 
   $pref = new DisplayPreference();
   $pref->deleteByCriteria(['itemtype' => ['LIKE', 'PluginAssetprefixes%']]);
