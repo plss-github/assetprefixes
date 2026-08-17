@@ -36,6 +36,7 @@ class PluginAssetprefixesConfig extends CommonGLPI {
   static function getDefaults(): array {
     return [
       'check_uniqueness' => 0,
+      'debug_log'        => 0,
     ];
   }
 
@@ -66,6 +67,19 @@ class PluginAssetprefixesConfig extends CommonGLPI {
     return (bool)(self::getConfig()['check_uniqueness'] ?? false);
   }
 
+  // Rastro de execução em Administração > Registros. Deixe desligado em produção:
+  // é uma linha por ativo criado. Existe pra diagnosticar ambientes onde não há
+  // acesso ao filesystem pra ler files/_log/assetprefixes.log.
+  static function debugLogEnabled(): bool {
+    // Consultado várias vezes por criação de ativo (inclusive nos caminhos em que
+    // nada é feito), então a leitura fica em cache pelo tempo da requisição.
+    static $enabled = null;
+    if ($enabled === null) {
+      $enabled = (bool)(self::getConfig()['debug_log'] ?? false);
+    }
+    return $enabled;
+  }
+
   // -------------------------------------------------------------------------
   // Formulário
   // -------------------------------------------------------------------------
@@ -84,6 +98,13 @@ class PluginAssetprefixesConfig extends CommonGLPI {
     echo "<td>";
     Dropdown::showYesNo('check_uniqueness', (int)($config['check_uniqueness'] ?? 0));
     echo "&nbsp;<small class='text-muted'>" . __('Avança o contador se o valor já existir em um campo nativo alvo (não verifica campos customizados).', 'assetprefixes') . "</small>";
+    echo "</td>";
+    echo "</tr>";
+    echo "<tr class='tab_bg_1'>";
+    echo "<td>" . __('Registrar diagnóstico em Administração > Registros', 'assetprefixes') . "</td>";
+    echo "<td>";
+    Dropdown::showYesNo('debug_log', (int)($config['debug_log'] ?? 0));
+    echo "&nbsp;<small class='text-muted'>" . __('Grava uma linha por ativo criado (serviço "plugins") mostrando família, padrão e campos gravados. Use só para diagnóstico — falhas já são registradas mesmo com isto desligado.', 'assetprefixes') . "</small>";
     echo "</td>";
     echo "</tr>";
     echo "<tr class='tab_bg_2'><td colspan='2' class='center'>";

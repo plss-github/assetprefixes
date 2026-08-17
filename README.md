@@ -92,6 +92,7 @@ Under **Setup → General → Asset Prefixes**:
 | Setting | Description |
 |---|---|
 | Validate uniqueness | If enabled, advances the counter when the generated value already exists in a native target field (does not check custom fields) |
+| Diagnostic logging | If enabled, writes one line per created asset to **Administration → Logs** (service `plugins`) showing the family, pattern and fields written. For troubleshooting only — failures are always logged regardless of this setting |
 
 ---
 
@@ -111,7 +112,10 @@ Asset created (e.g. a Computer)
            ├─ Issue next number  (SELECT ... FOR UPDATE → counter + 1 → format with mask)
            │       │ (optional uniqueness: skip values already used in native fields)
            │       ▼
-           └─ Write value into NATIVE target fields ($item->input)
+           ├─ Write value into NATIVE target fields ($item->input)
+           │
+           └─ Write value into $item->input[<custom column>] as well, so the Fields
+              plugin persists it itself if its own pre_item_add hook runs after ours
     │
     └─ item_add hook (+ register_shutdown_function)
            │
@@ -128,10 +132,28 @@ if the Fields plugin is absent, custom-field options simply don't appear and ass
 creation is never blocked. Only free-text field types (`text`, `textarea`, `richtext`) are
 offered, since dropdown/number/date fields have their own value formats.
 
-> **Note on read-only custom fields:** the Fields plugin writes empty values from the
-> creation form via its own `item_add` hook. To avoid it overwriting our value, the custom
-> field is written at the end of the request (`register_shutdown_function`), guaranteeing
-> our value is the last one saved.
+> **Note on read-only custom fields:** a read-only field is rendered with the `readonly`
+> attribute, so the creation form still submits it — empty. The Fields plugin picks that
+> empty value up in `PluginFieldsContainer::preItem()` → `populateData()` (which reads
+> `$item->input[<column>]` and does *not* filter read-only fields) and writes it in its own
+> `item_add` hook. Two independent mechanisms make sure our value wins regardless of the
+> order in which GLPI loads the two plugins:
+>
+> 1. `pre_item_add` also injects the value into `$item->input[<column>]`. If the Fields
+>    hook runs after ours, Fields persists our value natively, with proper history.
+> 2. `item_add` schedules a deferred write via `register_shutdown_function()`, which runs
+>    after all synchronous processing. This covers the case where the Fields hook ran
+>    first. It writes through the Fields-generated class when available, and falls back to
+>    a direct `UPDATE`/`INSERT` on the block table otherwise (same value, no history entry).
+
+### Troubleshooting
+
+Any failure of the custom-field write is reported in three places: a session warning, the
+`files/_log/assetprefixes.log` file, and **Administration → Logs** (service `plugins`),
+with the concrete reason (block removed, generated class missing, incompatible field type,
+write rejected…). The last channel is the one to use on hosted environments with no shell
+access. Enabling *Diagnostic logging* additionally traces the successful path, so you can
+tell "no family matched" apart from "the write failed".
 
 ---
 

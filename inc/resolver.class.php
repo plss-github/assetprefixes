@@ -103,6 +103,7 @@ class PluginAssetprefixesResolver {
 
     $family = self::findApplicableFamily($itemtype, $entities_id);
     if (!$family) {
+      self::debugLog("nenhuma família ativa para $itemtype na entidade #$entities_id — nada a fazer.", $itemtype);
       return;
     }
 
@@ -113,16 +114,16 @@ class PluginAssetprefixesResolver {
 
     $pattern = PluginAssetprefixesPrefixPattern::findApplicablePattern((int)$family['id'], $subtype_id);
     if (!$pattern) {
+      self::debugLog(sprintf(
+        'família #%d encontrada, mas nenhum padrão casa com o subtipo #%s (nem padrão global).',
+        (int)$family['id'],
+        $subtype_id === null ? 'nenhum' : $subtype_id
+      ), $itemtype);
       return;
     }
 
-    $applicable    = PluginAssetprefixesPrefixField::getApplicableFields((int)$family['id'], (int)$pattern['id']);
-    $native_fields = [];
-    foreach ($applicable as $field) {
-      if ($field['field_type'] === 'native' && $field['field_name'] !== '') {
-        $native_fields[] = $field['field_name'];
-      }
-    }
+    $applicable = PluginAssetprefixesPrefixField::getApplicableFields((int)$family['id'], (int)$pattern['id']);
+    [$native_fields, $custom_fields] = self::splitTargets($applicable);
 
     $value = self::issue((int)$pattern['id']);
     if ($value === null) {
@@ -148,10 +149,70 @@ class PluginAssetprefixesResolver {
       $item->input[$field_name] = $value;
     }
 
+    // Campos customizados: o plugin Fields monta o que vai gravar em
+    // PluginFieldsContainer::preItem() -> populateData(), lendo direto de
+    // $item->input[<coluna>] e SEM filtrar campos read-only. Injetar aqui faz o
+    // próprio Fields persistir nosso valor (com histórico). Se o hook dele rodar
+    // ANTES do nosso, a injeção chega tarde — e aí a escrita adiada de onItemAdd()
+    // cobre o caso. As duas pontas juntas tornam o resultado independente da ordem
+    // de carga dos plugins, que o GLPI não garante.
+    self::injectCustomFieldsIntoInput($item, $custom_fields, $value);
+
     // Repassado para onItemAdd() via propriedade dinâmica do item (mesmo objeto em ambos os hooks)
     $item->_assetprefixes_value      = $value;
     $item->_assetprefixes_prefix_id  = (int)$family['id'];
     $item->_assetprefixes_pattern_id = (int)$pattern['id'];
+
+    self::debugLog(sprintf(
+      'valor "%s" emitido (família #%d, padrão #%d) para %s; nativos: [%s]; customizados: [%s]',
+      $value,
+      (int)$family['id'],
+      (int)$pattern['id'],
+      $itemtype,
+      implode(', ', $native_fields),
+      implode(', ', $custom_fields)
+    ), $itemtype);
+  }
+
+  // Separa os alvos configurados por origem, preservando a ordem de cadastro.
+  private static function splitTargets(array $applicable): array {
+    $native = [];
+    $custom = [];
+    foreach ($applicable as $field) {
+      if (($field['field_name'] ?? '') === '') {
+        continue;
+      }
+      if ($field['field_type'] === 'custom') {
+        $custom[] = $field['field_name'];
+      } else {
+        $native[] = $field['field_name'];
+      }
+    }
+    return [$native, $custom];
+  }
+
+  // Ver chamada em onPreItemAdd(): deixa o valor no input com o nome da coluna do
+  // Fields, que é exatamente onde populateData() vai procurar.
+  private static function injectCustomFieldsIntoInput($item, array $custom_fields, string $value): void {
+    global $DB;
+
+    if (empty($custom_fields)) {
+      return;
+    }
+
+    // Uma coluna customizada homônima de uma coluna nativa do ativo seria copiada
+    // para o INSERT do próprio ativo pelo GLPI, sobrescrevendo o campo nativo. Nesse
+    // caso não injetamos: só a escrita adiada atua.
+    $table       = getTableForItemType(get_class($item));
+    $own_columns = $table ? $DB->listFields($table) : [];
+
+    foreach ($custom_fields as $encoded_field_name) {
+      [, $column] = array_pad(explode(':', $encoded_field_name, 2), 2, null);
+      if ($column === null || $column === '' || isset($own_columns[$column])) {
+        continue;
+      }
+      $item->input[$column] = $value;
+    }
   }
 
   // item_add: grava o valor emitido nos campos customizados, agora que o item já existe.
@@ -177,16 +238,18 @@ class PluginAssetprefixesResolver {
     $prefix_id  = (int)$item->_assetprefixes_prefix_id;
     $pattern_id = (int)($item->_assetprefixes_pattern_id ?? 0);
 
-    foreach (PluginAssetprefixesPrefixField::getApplicableFields($prefix_id, $pattern_id) as $field) {
-      if ($field['field_type'] === 'custom' && $field['field_name'] !== '') {
-        register_shutdown_function(
-          [self::class, 'writeCustomFieldDeferred'],
-          $itemtype,
-          $items_id,
-          $field['field_name'],
-          $value
-        );
-      }
+    [, $custom_fields] = self::splitTargets(
+      PluginAssetprefixesPrefixField::getApplicableFields($prefix_id, $pattern_id)
+    );
+
+    foreach ($custom_fields as $encoded_field_name) {
+      register_shutdown_function(
+        [self::class, 'writeCustomFieldDeferred'],
+        $itemtype,
+        $items_id,
+        $encoded_field_name,
+        $value
+      );
     }
   }
 
@@ -207,10 +270,39 @@ class PluginAssetprefixesResolver {
   // Log + aviso visível na sessão — usado em todo ponto de saída de
   // writeCustomField() pra tornar diagnosticável qualquer falha silenciosa
   // dessa integração best-effort com o plugin Fields.
-  private static function warnCustomFieldFailure(string $reason): void {
+  //
+  // Event::log() grava em glpi_events, que é lido pela interface em
+  // Administração > Registros: é o único canal de diagnóstico disponível quando
+  // não se tem acesso ao filesystem (files/_log/assetprefixes.log) do ambiente.
+  private static function warnCustomFieldFailure(string $reason, string $itemtype = '', int $items_id = 0): void {
     $message = __('Assetprefixes: campo customizado não gravado — ', 'assetprefixes') . $reason;
     Session::addMessageAfterRedirect($message, false, WARNING);
     Toolbox::logInFile('assetprefixes', $message);
+    // Nível 1 = sempre registrado, independente do "Nível de log" do GLPI.
+    self::eventLog($message, 1, $itemtype, $items_id);
+  }
+
+  // Rastro de execução do fluxo inteiro, ligado sob demanda em
+  // Configurar > Geral > Asset Prefixes. Serve pra descobrir, sem shell, em que
+  // ponto a resolução parou num ambiente onde o plugin "não preencheu".
+  private static function debugLog(string $message, string $itemtype = '', int $items_id = 0): void {
+    if (!PluginAssetprefixesConfig::debugLogEnabled()) {
+      return;
+    }
+    $message = 'Assetprefixes: ' . $message;
+    Toolbox::logInFile('assetprefixes', $message);
+    self::eventLog($message, 4, $itemtype, $items_id);
+  }
+
+  private static function eventLog(string $message, int $level, string $itemtype, int $items_id): void {
+    if (!class_exists('Event')) {
+      return;
+    }
+    try {
+      Event::log($items_id, $itemtype ?: 'PluginAssetprefixesPrefix', $level, 'plugins', $message);
+    } catch (\Throwable $e) {
+      // Diagnóstico nunca pode derrubar a criação do ativo.
+    }
   }
 
   // Integração best-effort com o plugin Fields (glpi-project/fields), única fonte de
@@ -219,13 +311,16 @@ class PluginAssetprefixesResolver {
   private static function writeCustomField($item, string $encoded_field_name, string $value): void {
     global $DB;
 
+    $itemtype = get_class($item);
+    $items_id = (int)$item->getID();
+
     [$containers_id, $column] = array_pad(explode(':', $encoded_field_name, 2), 2, null);
     if (!$containers_id || !$column) {
-      self::warnCustomFieldFailure("valor de configuração inválido ($encoded_field_name).");
+      self::warnCustomFieldFailure("valor de configuração inválido ($encoded_field_name).", $itemtype, $items_id);
       return;
     }
     if (!$DB->tableExists('glpi_plugin_fields_containers')) {
-      self::warnCustomFieldFailure('plugin Fields não parece estar instalado (tabela glpi_plugin_fields_containers não existe).');
+      self::warnCustomFieldFailure('plugin Fields não parece estar instalado (tabela glpi_plugin_fields_containers não existe).', $itemtype, $items_id);
       return;
     }
 
@@ -236,11 +331,11 @@ class PluginAssetprefixesResolver {
         'LIMIT' => 1,
       ]);
       if (!count($iter)) {
-        self::warnCustomFieldFailure("bloco de campos #$containers_id não encontrado (foi removido?).");
+        self::warnCustomFieldFailure("bloco de campos #$containers_id não encontrado (foi removido?).", $itemtype, $items_id);
         return;
       }
       if (!class_exists('PluginFieldsContainer')) {
-        self::warnCustomFieldFailure('plugin Fields não está ativo (classe PluginFieldsContainer não existe).');
+        self::warnCustomFieldFailure('plugin Fields não está ativo (classe PluginFieldsContainer não existe).', $itemtype, $items_id);
         return;
       }
       $container = $iter->current();
@@ -263,33 +358,88 @@ class PluginAssetprefixesResolver {
           __('campo "%1$s" é do tipo "%2$s", incompatível (use texto/texto longo/rich text).', 'assetprefixes'),
           $column,
           $field_type
-        ));
+        ), $itemtype, $items_id);
         return;
       }
 
-      $itemtype  = get_class($item);
       $classname = PluginFieldsContainer::getClassname($itemtype, $container['name']);
-      if (!class_exists($classname)) {
-        self::warnCustomFieldFailure("classe gerada \"$classname\" (bloco \"{$container['name']}\") não encontrada.");
+
+      // Caminho preferencial: a classe gerada pelo Fields, que dispara o histórico
+      // do bloco e o forward de entidade. Ela vive em files/_plugins/fields/inc e
+      // depende do autoloader do Fields — se não estiver carregável, ou se o
+      // add()/update() recusar o input, caímos no SQL direto: mesmo valor gravado,
+      // só sem histórico. Melhor um valor gravado sem histórico do que um campo vazio.
+      $reason = "classe gerada \"$classname\" (bloco \"{$container['name']}\") não encontrada";
+      if (class_exists($classname)) {
+        $obj    = new $classname();
+        $exists = $obj->getFromDBByCrit(['items_id' => $items_id, 'itemtype' => $itemtype]);
+        $ok     = $exists
+          ? $obj->update(['id' => $obj->getID(), $column => $value])
+          : $obj->add(['items_id' => $items_id, 'itemtype' => $itemtype, $column => $value]);
+
+        if ($ok) {
+          self::debugLog("campo customizado \"$column\" gravado via $classname (valor \"$value\").", $itemtype, $items_id);
+          return;
+        }
+        $reason = sprintf('%1$s() falhou na classe "%2$s"', $exists ? 'update' : 'add', $classname);
+      }
+
+      if (self::writeCustomFieldRaw($itemtype, $items_id, $classname, (int)$containers_id, $column, $value)) {
+        self::debugLog("campo customizado \"$column\" gravado por SQL direto (valor \"$value\"; motivo do fallback: $reason).", $itemtype, $items_id);
         return;
       }
 
-      $obj    = new $classname();
-      $exists = $obj->getFromDBByCrit(['items_id' => $item->getID(), 'itemtype' => $itemtype]);
-      $ok     = $exists
-        ? $obj->update(['id' => $obj->getID(), $column => $value])
-        : $obj->add(['items_id' => $item->getID(), 'itemtype' => $itemtype, $column => $value]);
-
-      if (!$ok) {
-        self::warnCustomFieldFailure(sprintf(
-          __('%1$s() falhou na classe "%2$s" (coluna "%3$s").', 'assetprefixes'),
-          $exists ? 'update' : 'add',
-          $classname,
-          $column
-        ));
-      }
+      self::warnCustomFieldFailure("$reason; a escrita direta na tabela também falhou (bloco #$containers_id, coluna \"$column\").", $itemtype, $items_id);
     } catch (\Throwable $e) {
-      self::warnCustomFieldFailure('exceção — ' . $e->getMessage());
+      self::warnCustomFieldFailure('exceção — ' . $e->getMessage(), $itemtype, $items_id);
     }
+  }
+
+  // Fallback do writeCustomField(): grava direto na tabela do bloco, sem passar
+  // pela classe gerada. getTableForItemType() resolve o nome da tabela a partir do
+  // nome da classe mesmo quando ela não está carregada — é a mesma função que o
+  // próprio Fields usa pra montar suas search options.
+  private static function writeCustomFieldRaw(
+    string $itemtype,
+    int $items_id,
+    string $classname,
+    int $containers_id,
+    string $column,
+    string $value
+  ): bool {
+    global $DB;
+
+    $table = getTableForItemType($classname);
+    if (!$table || !$DB->tableExists($table) || !$DB->fieldExists($table, $column)) {
+      return false;
+    }
+
+    $existing = $DB->request([
+      'SELECT' => 'id',
+      'FROM'   => $table,
+      'WHERE'  => ['items_id' => $items_id, 'itemtype' => $itemtype],
+      'LIMIT'  => 1,
+    ]);
+    if (count($existing)) {
+      return (bool)$DB->update($table, [$column => $value], ['id' => (int)$existing->current()['id']]);
+    }
+
+    $input = ['items_id' => $items_id, 'itemtype' => $itemtype, $column => $value];
+    if ($DB->fieldExists($table, 'plugin_fields_containers_id')) {
+      $input['plugin_fields_containers_id'] = $containers_id;
+    }
+    // entities_id/is_recursive só existem na tabela do bloco quando o itemtype é
+    // entity-assign / recursivo (ver templates/container.class.tpl do Fields).
+    $asset = new $itemtype();
+    if ($asset->getFromDB($items_id)) {
+      if ($DB->fieldExists($table, 'entities_id')) {
+        $input['entities_id'] = (int)($asset->fields['entities_id'] ?? 0);
+      }
+      if ($DB->fieldExists($table, 'is_recursive')) {
+        $input['is_recursive'] = (int)($asset->fields['is_recursive'] ?? 0);
+      }
+    }
+
+    return (bool)$DB->insert($table, $input);
   }
 }
