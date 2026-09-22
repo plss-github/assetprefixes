@@ -76,7 +76,12 @@ class PluginAssetprefixesResolver {
       return false;
     }
 
-    return countElementsInTable($table, ['OR' => $or]) > 0;
+    // Ativos customizados (GLPI 11) dividem glpi_assets_assets entre TODAS as
+    // definições — sem este filtro a checagem de unicidade enxergaria ativos de
+    // outros tipos customizados.
+    $where = ['OR' => $or] + PluginAssetprefixesPrefix::getSharedTableRestriction($itemtype);
+
+    return countElementsInTable($table, $where) > 0;
   }
 
   // Família aplicável: itemtype + entidade (respeitando recursividade) (spec §6)
@@ -207,6 +212,17 @@ class PluginAssetprefixesResolver {
     $own_columns = $table ? $DB->listFields($table) : [];
 
     foreach ($custom_fields as $encoded_field_name) {
+      // GLPI 11: campo customizado nativo do ativo customizado. Asset::add()
+      // chama prepareInputForAdd() -> handleCustomFieldsUpdate() DEPOIS do hook
+      // pre_item_add (CommonDBTM::add — doHook na linha 1338, prepare na 1341),
+      // então basta deixar o valor em input['custom_<system_name>'] que o
+      // próprio core serializa na coluna JSON `custom_fields`.
+      $system_name = self::getAssetFieldSystemName($encoded_field_name);
+      if ($system_name !== null) {
+        $item->input['custom_' . $system_name] = $value;
+        continue;
+      }
+
       [, $column] = array_pad(explode(':', $encoded_field_name, 2), 2, null);
       if ($column === null || $column === '' || isset($own_columns[$column])) {
         continue;
@@ -238,9 +254,19 @@ class PluginAssetprefixesResolver {
     $prefix_id  = (int)$item->_assetprefixes_prefix_id;
     $pattern_id = (int)($item->_assetprefixes_pattern_id ?? 0);
 
-    [, $custom_fields] = self::splitTargets(
+    [$native_fields, $custom_fields] = self::splitTargets(
       PluginAssetprefixesPrefixField::getApplicableFields($prefix_id, $pattern_id)
     );
+
+    if (PluginAssetprefixesPrefix::isCustomAsset($itemtype) && !empty($native_fields)) {
+      register_shutdown_function(
+        [self::class, 'repairNativeFieldsDeferred'],
+        $itemtype,
+        $items_id,
+        $native_fields,
+        $value
+      );
+    }
 
     foreach ($custom_fields as $encoded_field_name) {
       register_shutdown_function(
@@ -305,6 +331,118 @@ class PluginAssetprefixesResolver {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Campos customizados nativos do GLPI 11 (ativos customizados)
+  // -------------------------------------------------------------------------
+
+  // "assetfield:<system_name>" -> "<system_name>"; null para qualquer outro
+  // formato (campos do plugin Fields são "<containers_id>:<coluna>").
+  private static function getAssetFieldSystemName(string $encoded_field_name): ?string {
+    $prefix = PluginAssetprefixesPrefixField::ASSET_FIELD_PREFIX;
+    if (strpos($encoded_field_name, $prefix) !== 0) {
+      return null;
+    }
+    $system_name = substr($encoded_field_name, strlen($prefix));
+    return $system_name !== '' ? $system_name : null;
+  }
+
+  // Escrita adiada (ver onItemAdd) de um campo customizado do GLPI 11.
+  //
+  // O valor mora na coluna JSON `custom_fields` de glpi_assets_assets, indexado
+  // pelo ID da CustomFieldDefinition. Gravamos direto no JSON em vez de chamar
+  // $item->update(['custom_<system_name>' => ...]) porque Asset::prepareInputFor*
+  // roda handleReadonlyFieldUpdate(): se o campo estiver marcado como somente
+  // leitura para o perfil ativo (o caso natural de um campo preenchido
+  // automaticamente), o core descarta o valor do input. Quando a injeção feita
+  // em onPreItemAdd() sobreviveu, o valor já está correto e nada é gravado.
+  private static function writeAssetCustomField($item, string $system_name, string $value): void {
+    global $DB;
+
+    $itemtype = get_class($item);
+    $items_id = (int)$item->getID();
+    $encoded  = PluginAssetprefixesPrefixField::ASSET_FIELD_PREFIX . $system_name;
+
+    $field = PluginAssetprefixesPrefixField::getCustomAssetFieldDefinition($itemtype, $encoded);
+    if ($field === null) {
+      self::warnCustomFieldFailure("campo customizado \"$system_name\" não existe na definição deste ativo (foi removido?).", $itemtype, $items_id);
+      return;
+    }
+    if (!in_array($field['type'], PluginAssetprefixesPrefixField::ASSET_FIELD_SAFE_TYPES, true)) {
+      self::warnCustomFieldFailure(sprintf(
+        __('campo "%1$s" é do tipo "%2$s", incompatível (use texto/texto longo).', 'assetprefixes'),
+        $system_name,
+        $field['type']
+      ), $itemtype, $items_id);
+      return;
+    }
+
+    $table = getTableForItemType($itemtype);
+    if (!$table || !$DB->fieldExists($table, 'custom_fields')) {
+      self::warnCustomFieldFailure("tabela \"$table\" não tem a coluna custom_fields.", $itemtype, $items_id);
+      return;
+    }
+
+    $iter = $DB->request(['SELECT' => 'custom_fields', 'FROM' => $table, 'WHERE' => ['id' => $items_id], 'LIMIT' => 1]);
+    if (!count($iter)) {
+      self::warnCustomFieldFailure("ativo #$items_id não encontrado para gravar \"$system_name\".", $itemtype, $items_id);
+      return;
+    }
+
+    $custom_fields = json_decode((string)($iter->current()['custom_fields'] ?? ''), true);
+    if (!is_array($custom_fields)) {
+      $custom_fields = [];
+    }
+
+    // Já gravado pela injeção em onPreItemAdd() — nada a fazer.
+    if (array_key_exists($field['id'], $custom_fields) && (string)$custom_fields[$field['id']] === $value) {
+      self::debugLog("campo customizado \"$system_name\" já continha \"$value\" (injeção no input funcionou).", $itemtype, $items_id);
+      return;
+    }
+
+    $custom_fields[$field['id']] = $value;
+    if ($DB->update($table, ['custom_fields' => json_encode($custom_fields)], ['id' => $items_id])) {
+      self::debugLog("campo customizado \"$system_name\" gravado no JSON custom_fields (valor \"$value\").", $itemtype, $items_id);
+      return;
+    }
+
+    self::warnCustomFieldFailure("falha ao gravar \"$system_name\" na coluna custom_fields do ativo #$items_id.", $itemtype, $items_id);
+  }
+
+  // Ativos customizados permitem marcar campos do core como somente leitura por
+  // perfil (AssetDefinition > campos); nesse caso Asset::prepareInputForAdd()
+  // descarta o valor que injetamos no input. Esta repescagem adiada devolve o
+  // valor emitido aos campos nativos que ficaram vazios/divergentes.
+  public static function repairNativeFieldsDeferred(string $itemtype, int $items_id, array $native_fields, string $value): void {
+    global $DB;
+
+    $table = getTableForItemType($itemtype);
+    if (!$table || empty($native_fields)) {
+      return;
+    }
+
+    $iter = $DB->request(['FROM' => $table, 'WHERE' => ['id' => $items_id], 'LIMIT' => 1]);
+    if (!count($iter)) {
+      return;
+    }
+    $row = $iter->current();
+
+    $to_write = [];
+    foreach ($native_fields as $field_name) {
+      if (array_key_exists($field_name, $row) && (string)$row[$field_name] !== $value) {
+        $to_write[$field_name] = $value;
+      }
+    }
+    if (empty($to_write)) {
+      return;
+    }
+
+    $DB->update($table, $to_write, ['id' => $items_id]);
+    self::debugLog(sprintf(
+      'campos nativos [%s] regravados após a criação (o core descartou o valor injetado — campo somente leitura?).',
+      implode(', ', array_keys($to_write))
+    ), $itemtype, $items_id);
+  }
+
   // Integração best-effort com o plugin Fields (glpi-project/fields), única fonte de
   // "campos customizados" para os itemtypes nativos suportados por este plugin.
   // field_name customizado é gravado como "<glpi_plugin_fields_containers.id>:<coluna>".
@@ -313,6 +451,12 @@ class PluginAssetprefixesResolver {
 
     $itemtype = get_class($item);
     $items_id = (int)$item->getID();
+
+    $system_name = self::getAssetFieldSystemName($encoded_field_name);
+    if ($system_name !== null) {
+      self::writeAssetCustomField($item, $system_name, $value);
+      return;
+    }
 
     [$containers_id, $column] = array_pad(explode(':', $encoded_field_name, 2), 2, null);
     if (!$containers_id || !$column) {

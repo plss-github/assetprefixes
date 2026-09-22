@@ -18,10 +18,110 @@ class PluginAssetprefixesPrefix extends CommonDBTM {
   }
 
   // -------------------------------------------------------------------------
+  // Ativos customizados do GLPI 11 (Glpi\Asset\AssetDefinition)
+  // -------------------------------------------------------------------------
+
+  // Namespace/sufixo das classes concretas geradas pelo core a partir de uma
+  // definição de ativo customizado — ver AssetDefinition::getCustomObjectNamespace()
+  // e AbstractDefinition::getCustomObjectClassName().
+  const CUSTOM_ASSET_NAMESPACE   = 'Glpi\\CustomAsset\\';
+  const CUSTOM_ASSET_SUFFIX      = 'Asset';
+  const CUSTOM_ASSET_DEFINITIONS = 'glpi_assets_assetdefinitions';
+  // Todos os ativos customizados compartilham UMA tabela (glpi_assets_assets) e
+  // uma tabela de tipos (glpi_assets_assettypes); a definição é o discriminador.
+  const CUSTOM_ASSET_TYPE_FIELD  = 'assets_assettypes_id';
+  const CUSTOM_ASSET_DEF_FIELD   = 'assets_assetdefinitions_id';
+
+  static function isCustomAsset(string $itemtype): bool {
+    return $itemtype !== '' && strpos($itemtype, self::CUSTOM_ASSET_NAMESPACE) === 0;
+  }
+
+  static function getCustomAssetSystemName(string $itemtype): ?string {
+    if (!self::isCustomAsset($itemtype)) {
+      return null;
+    }
+    $name = substr($itemtype, strlen(self::CUSTOM_ASSET_NAMESPACE));
+    $name = preg_replace('/' . preg_quote(self::CUSTOM_ASSET_SUFFIX, '/') . '$/', '', $name);
+    return $name !== '' ? $name : null;
+  }
+
+  // Linha de glpi_assets_assetdefinitions correspondente ao itemtype.
+  static function getCustomAssetDefinition(string $itemtype): ?array {
+    global $DB;
+
+    $system_name = self::getCustomAssetSystemName($itemtype);
+    if ($system_name === null || !self::customAssetsAvailable()) {
+      return null;
+    }
+
+    $iter = $DB->request([
+      'FROM'  => self::CUSTOM_ASSET_DEFINITIONS,
+      'WHERE' => ['system_name' => $system_name],
+      'LIMIT' => 1,
+    ]);
+    return count($iter) ? $iter->current() : null;
+  }
+
+  static function getCustomAssetDefinitionId(string $itemtype): int {
+    return (int)(self::getCustomAssetDefinition($itemtype)['id'] ?? 0);
+  }
+
+  private static function customAssetsAvailable(): bool {
+    global $DB;
+    return isset($DB) && $DB->connected && $DB->tableExists(self::CUSTOM_ASSET_DEFINITIONS);
+  }
+
+  // Ativos customizados ativos, como itemtype => rótulo.
+  //
+  // Lido direto da tabela, e não via AssetDefinitionManager: plugin_init roda
+  // ANTES do boot das definições (ListenersPriority — InitializePlugins tem
+  // prioridade 110, CustomObjectsBoot 100), então o manager ainda está vazio no
+  // momento em que setup.php precisa registrar os hooks pre_item_add/item_add.
+  // As classes concretas também ainda não são carregáveis nesse ponto; aqui só
+  // montamos os NOMES delas, que é tudo que Plugin::doHook() compara.
+  static function getCustomAssetItemtypes(): array {
+    global $DB;
+
+    static $cache = null;
+    if ($cache !== null) {
+      return $cache;
+    }
+
+    $cache = [];
+    if (!self::customAssetsAvailable()) {
+      return $cache;
+    }
+
+    foreach ($DB->request(['FROM' => self::CUSTOM_ASSET_DEFINITIONS, 'WHERE' => ['is_active' => 1]]) as $row) {
+      if (empty($row['system_name'])) {
+        continue;
+      }
+      $itemtype = self::CUSTOM_ASSET_NAMESPACE . $row['system_name'] . self::CUSTOM_ASSET_SUFFIX;
+      $cache[$itemtype] = self::getCustomAssetLabel($row);
+    }
+    asort($cache);
+
+    return $cache;
+  }
+
+  private static function getCustomAssetLabel(array $definition_row): string {
+    if (class_exists('Glpi\\Asset\\AssetDefinition')) {
+      try {
+        $definition = new \Glpi\Asset\AssetDefinition();
+        $definition->getFromResultSet($definition_row);
+        return $definition->getTranslatedName(1);
+      } catch (\Throwable $e) {
+        // Cai no rótulo cru abaixo — nunca vale derrubar o init do plugin.
+      }
+    }
+    return $definition_row['label'] ?: $definition_row['system_name'];
+  }
+
+  // -------------------------------------------------------------------------
   // Tipos de ativo suportados e seus metadados de subtipo
   // -------------------------------------------------------------------------
 
-  static function getSupportedItemtypes(): array {
+  static function getCoreItemtypes(): array {
     return [
       'Computer'         => _n('Computer', 'Computers', 1),
       'Monitor'          => _n('Monitor', 'Monitors', 1),
@@ -32,8 +132,16 @@ class PluginAssetprefixesPrefix extends CommonDBTM {
     ];
   }
 
+  static function getSupportedItemtypes(): array {
+    return self::getCoreItemtypes() + self::getCustomAssetItemtypes();
+  }
+
   // Classe GLPI do subtipo (ex: ComputerType) para o itemtype
   static function getSubtypeForItemtype(string $itemtype): ?string {
+    if (self::isCustomAsset($itemtype)) {
+      // AssetDefinition::getAssetTypeClassName() = classe do ativo + "Type".
+      return $itemtype . 'Type';
+    }
     return [
       'Computer'         => 'ComputerType',
       'Monitor'          => 'MonitorType',
@@ -46,6 +154,9 @@ class PluginAssetprefixesPrefix extends CommonDBTM {
 
   // Campo do ativo que contém o ID do subtipo
   static function getSubtypeField(string $itemtype): ?string {
+    if (self::isCustomAsset($itemtype)) {
+      return self::CUSTOM_ASSET_TYPE_FIELD;
+    }
     return [
       'Computer'         => 'computertypes_id',
       'Monitor'          => 'monitortypes_id',
@@ -57,6 +168,9 @@ class PluginAssetprefixesPrefix extends CommonDBTM {
   }
 
   static function getSubtypeLabel(string $itemtype): string {
+    if (self::isCustomAsset($itemtype)) {
+      return sprintf(__('Tipo de %s', 'assetprefixes'), self::getSupportedItemtypes()[$itemtype] ?? $itemtype);
+    }
     return [
       'Computer'         => __('Tipo de computador', 'assetprefixes'),
       'Monitor'          => __('Tipo de monitor', 'assetprefixes'),
@@ -65,6 +179,41 @@ class PluginAssetprefixesPrefix extends CommonDBTM {
       'Phone'            => __('Tipo de telefone', 'assetprefixes'),
       'Printer'          => __('Tipo de impressora', 'assetprefixes'),
     ][$itemtype] ?? __('Subtipo', 'assetprefixes');
+  }
+
+  // Restrição SQL que isola as linhas de UM ativo customizado nas tabelas
+  // compartilhadas (glpi_assets_assets / glpi_assets_assettypes). Vazio para
+  // itemtypes nativos, que têm tabela própria.
+  static function getSharedTableRestriction(string $itemtype): array {
+    if (!self::isCustomAsset($itemtype)) {
+      return [];
+    }
+    return [self::CUSTOM_ASSET_DEF_FIELD => self::getCustomAssetDefinitionId($itemtype)];
+  }
+
+  // Subtipos disponíveis (id => nome) para o itemtype.
+  static function getSubtypeChoices(string $itemtype): array {
+    global $DB;
+
+    $subtype_class = $itemtype ? self::getSubtypeForItemtype($itemtype) : null;
+    if (!$subtype_class || !class_exists($subtype_class)) {
+      return [];
+    }
+
+    $criteria = [
+      'FROM'    => $subtype_class::getTable(),
+      'ORDERBY' => ['name ASC'],
+    ];
+    $restriction = self::getSharedTableRestriction($itemtype);
+    if (!empty($restriction)) {
+      $criteria['WHERE'] = $restriction;
+    }
+
+    $choices = [];
+    foreach ($DB->request($criteria) as $row) {
+      $choices[$row['id']] = $row['name'];
+    }
+    return $choices;
   }
 
   // Dropdown de subtipo para um itemtype já conhecido (usado pela aba de padrões).
@@ -90,20 +239,12 @@ class PluginAssetprefixesPrefix extends CommonDBTM {
   // Multi-select de subtipos (0 = global) para criar vários padrões de uma vez.
   // $exclude_ids: subtipos que já têm padrão configurado nesta família (0 = global já usado).
   static function showSubtypeMultiselect(string $itemtype, array $exclude_ids = []): void {
-    global $DB;
-
     // Sempre inicializado: sem isto, um itemtype sem subtipos cadastrados (ou
     // sem classe de subtipo) deixaria $options indefinido → showFromArray(null)
     // estoura em GLPI 11. Opção 0 = padrão global (fallback da família).
-    $options       = [0 => __('Global (todos os subtipos)', 'assetprefixes')];
-    $subtype_class = $itemtype ? self::getSubtypeForItemtype($itemtype) : null;
-
-    if ($subtype_class && class_exists($subtype_class)) {
-      $iter = $DB->request(['FROM' => $subtype_class::getTable(), 'ORDERBY' => ['name ASC']]);
-      foreach ($iter as $row) {
-        $options[$row['id']] = $row['name'];
-      }
-    }
+    // getSubtypeChoices() já filtra pela definição quando o itemtype é um ativo
+    // customizado (tabela de tipos compartilhada entre todas as definições).
+    $options = [0 => __('Global (todos os subtipos)', 'assetprefixes')] + self::getSubtypeChoices($itemtype);
 
     // Remove subtipos que já têm um padrão nesta família (NULL = global → chave 0).
     foreach ($exclude_ids as $excluded) {
@@ -133,7 +274,7 @@ class PluginAssetprefixesPrefix extends CommonDBTM {
       $DB->doQuery("CREATE TABLE `$table` (
         `id` int {$default_key_sign} NOT NULL AUTO_INCREMENT,
         `name` varchar(255) COLLATE {$default_collation} NOT NULL DEFAULT '',
-        `itemtype` varchar(100) COLLATE {$default_collation} NOT NULL DEFAULT '',
+        `itemtype` varchar(255) COLLATE {$default_collation} NOT NULL DEFAULT '',
         `is_active` tinyint(1) NOT NULL DEFAULT '1',
         `is_recursive` tinyint(1) NOT NULL DEFAULT '1',
         `entities_id` int {$default_key_sign} NOT NULL DEFAULT '0',
@@ -144,7 +285,15 @@ class PluginAssetprefixesPrefix extends CommonDBTM {
         KEY `is_active` (`is_active`),
         KEY `entities_id` (`entities_id`)
       ) ENGINE=InnoDB DEFAULT CHARSET={$default_charset} COLLATE={$default_collation};");
-    } elseif ($DB->fieldExists($table, 'pattern')) {
+    } else {
+      // Classes de ativo customizado (GLPI 11) são namespaced —
+      // "Glpi\\CustomAsset\\<system_name>Asset" — e system_name vai até 255
+      // caracteres, então varchar(100) do esquema original não cabe mais.
+      $migration->changeField($table, 'itemtype', 'itemtype', "varchar(255) COLLATE {$default_collation} NOT NULL DEFAULT ''");
+      $migration->migrationOneTable($table);
+    }
+
+    if ($DB->tableExists($table) && $DB->fieldExists($table, 'pattern')) {
       // Migração do modelo antigo (pattern/counter/subtipo direto na família)
       // para a nova tabela de padrões por subtipo (PrefixPattern).
       PluginAssetprefixesPrefixPattern::installBaseData($migration, $version);

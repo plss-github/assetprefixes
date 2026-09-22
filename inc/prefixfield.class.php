@@ -89,9 +89,12 @@ class PluginAssetprefixesPrefixField extends CommonDBTM {
     $options = [];
 
     // Campos técnicos que não fazem sentido como alvo de substituição de prefixo.
+    // `custom_fields` é a coluna JSON onde o GLPI 11 guarda TODOS os campos
+    // customizados de um ativo customizado — ela nunca é alvo direto; cada campo
+    // de dentro dela aparece individualmente no grupo "Campos customizados".
     $blacklist = [
       'id', 'entities_id', 'is_recursive', 'is_deleted', 'is_dynamic', 'is_template',
-      'template_name', 'date_mod', 'date_creation', 'uuid',
+      'template_name', 'date_mod', 'date_creation', 'uuid', 'custom_fields',
     ];
 
     $table  = getTableForItemType($itemtype);
@@ -150,6 +153,10 @@ class PluginAssetprefixesPrefixField extends CommonDBTM {
         }
       }
     }
+    // GLPI 11: campos customizados de ativos customizados são nativos do core
+    // (Glpi\Asset\CustomFieldDefinition), não vêm do plugin Fields.
+    $custom_options += self::getCustomAssetFieldOptions($itemtype);
+
     asort($custom_options);
 
     if (!empty($native_options)) {
@@ -160,6 +167,72 @@ class PluginAssetprefixesPrefixField extends CommonDBTM {
     }
 
     return $options;
+  }
+
+  // Tipos de campo customizado do GLPI 11 que aceitam receber uma string gerada.
+  // Os demais (dropdown, number, date, boolean, URL) têm formato de valor próprio.
+  const ASSET_FIELD_SAFE_TYPES = [
+    'Glpi\\Asset\\CustomFieldType\\StringType',
+    'Glpi\\Asset\\CustomFieldType\\TextType',
+  ];
+
+  // Prefixo que distingue, dentro de field_type='custom', um campo do GLPI 11
+  // ("assetfield:<system_name>") de um campo do plugin Fields
+  // ("<containers_id>:<coluna>").
+  const ASSET_FIELD_PREFIX = 'assetfield:';
+
+  // Campos customizados (GLPI 11) da definição do ativo customizado, no mesmo
+  // formato do dropdown unificado: "custom:assetfield:<system_name>" => rótulo.
+  static function getCustomAssetFieldOptions(string $itemtype): array {
+    global $DB;
+
+    $definition_id = PluginAssetprefixesPrefix::isCustomAsset($itemtype)
+      ? PluginAssetprefixesPrefix::getCustomAssetDefinitionId($itemtype)
+      : 0;
+    if ($definition_id <= 0 || !$DB->tableExists('glpi_assets_customfielddefinitions')) {
+      return [];
+    }
+
+    $options = [];
+    $iter = $DB->request([
+      'FROM'  => 'glpi_assets_customfielddefinitions',
+      'WHERE' => [
+        'assets_assetdefinitions_id' => $definition_id,
+        'type'                       => self::ASSET_FIELD_SAFE_TYPES,
+      ],
+    ]);
+    foreach ($iter as $field) {
+      $key = 'custom:' . self::ASSET_FIELD_PREFIX . $field['system_name'];
+      $options[$key] = $field['label'] ?: $field['system_name'];
+    }
+
+    return $options;
+  }
+
+  // Definição (linha de glpi_assets_customfielddefinitions) de um field_name
+  // gravado como "assetfield:<system_name>". Null quando não é um campo do
+  // GLPI 11, quando a definição sumiu ou quando o core não tem essa tabela.
+  static function getCustomAssetFieldDefinition(string $itemtype, string $field_name): ?array {
+    global $DB;
+
+    if (strpos($field_name, self::ASSET_FIELD_PREFIX) !== 0) {
+      return null;
+    }
+    $system_name   = substr($field_name, strlen(self::ASSET_FIELD_PREFIX));
+    $definition_id = PluginAssetprefixesPrefix::getCustomAssetDefinitionId($itemtype);
+    if ($system_name === '' || $definition_id <= 0 || !$DB->tableExists('glpi_assets_customfielddefinitions')) {
+      return null;
+    }
+
+    $iter = $DB->request([
+      'FROM'  => 'glpi_assets_customfielddefinitions',
+      'WHERE' => [
+        'assets_assetdefinitions_id' => $definition_id,
+        'system_name'                => $system_name,
+      ],
+      'LIMIT' => 1,
+    ]);
+    return count($iter) ? $iter->current() : null;
   }
 
   // -------------------------------------------------------------------------
@@ -287,6 +360,15 @@ class PluginAssetprefixesPrefixField extends CommonDBTM {
     }
 
     global $DB;
+
+    $asset_field = self::getCustomAssetFieldDefinition($itemtype, $field['field_name']);
+    if ($asset_field !== null) {
+      return $asset_field['label'] ?: $asset_field['system_name'];
+    }
+    if (strpos($field['field_name'], self::ASSET_FIELD_PREFIX) === 0) {
+      return substr($field['field_name'], strlen(self::ASSET_FIELD_PREFIX));
+    }
+
     [$containers_id, $column] = array_pad(explode(':', $field['field_name'], 2), 2, null);
     if (!$containers_id || !$column || !$DB->tableExists('glpi_plugin_fields_fields')) {
       return $field['field_name'];
