@@ -223,6 +223,11 @@ class PluginAssetprefixesResolver {
         continue;
       }
 
+      // More Fields: gravado só em item_add (escrita adiada) pela API dele.
+      if (self::getMorefieldsId($encoded_field_name) !== null) {
+        continue;
+      }
+
       [, $column] = array_pad(explode(':', $encoded_field_name, 2), 2, null);
       if ($column === null || $column === '' || isset($own_columns[$column])) {
         continue;
@@ -334,6 +339,36 @@ class PluginAssetprefixesResolver {
   // -------------------------------------------------------------------------
   // Campos customizados nativos do GLPI 11 (ativos customizados)
   // -------------------------------------------------------------------------
+
+  // "morefields:<id>" -> id da definição no More Fields; null para qualquer outro formato.
+  private static function getMorefieldsId(string $encoded_field_name): ?int {
+    $prefix = PluginAssetprefixesPrefixField::MOREFIELDS_PREFIX;
+    if (strpos($encoded_field_name, $prefix) !== 0) {
+      return null;
+    }
+    $id = (int)substr($encoded_field_name, strlen($prefix));
+    return $id > 0 ? $id : null;
+  }
+
+  // Grava o valor emitido num campo do More Fields pela API pública dele.
+  // Roda adiado (ver onItemAdd), depois de qualquer gravação feita pelo próprio
+  // formulário do ativo.
+  private static function writeMorefieldsField($item, int $field_id, string $value): void {
+    $itemtype = get_class($item);
+    $items_id = (int)$item->getID();
+
+    if (!class_exists('\\GlpiPlugin\\Morefields\\Api')) {
+      self::warnCustomFieldFailure('plugin More Fields não está ativo.', $itemtype, $items_id);
+      return;
+    }
+
+    $error = \GlpiPlugin\Morefields\Api::setValue($itemtype, $items_id, $field_id, $value);
+    if ($error !== null) {
+      self::warnCustomFieldFailure('More Fields: ' . $error . '.', $itemtype, $items_id);
+      return;
+    }
+    self::debugLog("campo #$field_id do More Fields gravado com \"$value\".", $itemtype, $items_id);
+  }
 
   // "assetfield:<system_name>" -> "<system_name>"; null para qualquer outro
   // formato (campos do plugin Fields são "<containers_id>:<coluna>").
@@ -455,6 +490,12 @@ class PluginAssetprefixesResolver {
     $system_name = self::getAssetFieldSystemName($encoded_field_name);
     if ($system_name !== null) {
       self::writeAssetCustomField($item, $system_name, $value);
+      return;
+    }
+
+    $morefields_id = self::getMorefieldsId($encoded_field_name);
+    if ($morefields_id !== null) {
+      self::writeMorefieldsField($item, $morefields_id, $value);
       return;
     }
 

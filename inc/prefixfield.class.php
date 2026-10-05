@@ -156,6 +156,8 @@ class PluginAssetprefixesPrefixField extends CommonDBTM {
     // GLPI 11: campos customizados de ativos customizados são nativos do core
     // (Glpi\Asset\CustomFieldDefinition), não vêm do plugin Fields.
     $custom_options += self::getCustomAssetFieldOptions($itemtype);
+    // Plugin More Fields: campos de texto configurados para este itemtype.
+    $custom_options += self::getMorefieldsOptions($itemtype);
 
     asort($custom_options);
 
@@ -166,6 +168,19 @@ class PluginAssetprefixesPrefixField extends CommonDBTM {
       $options[__('Campos customizados', 'assetprefixes')] = $custom_options;
     }
 
+    return $options;
+  }
+
+  // Campos de texto do plugin More Fields, no formato do dropdown unificado:
+  // "custom:morefields:<id>" => rótulo. Vazio se o plugin não está ativo.
+  static function getMorefieldsOptions(string $itemtype): array {
+    if (!class_exists('\\GlpiPlugin\\Morefields\\Api')) {
+      return [];
+    }
+    $options = [];
+    foreach (\GlpiPlugin\Morefields\Api::getTextFields($itemtype) as $id => $label) {
+      $options['custom:' . self::MOREFIELDS_PREFIX . $id] = 'More Fields — ' . $label;
+    }
     return $options;
   }
 
@@ -180,6 +195,9 @@ class PluginAssetprefixesPrefixField extends CommonDBTM {
   // ("assetfield:<system_name>") de um campo do plugin Fields
   // ("<containers_id>:<coluna>").
   const ASSET_FIELD_PREFIX = 'assetfield:';
+
+  // Idem para campos do plugin More Fields ("morefields:<id da definição>").
+  const MOREFIELDS_PREFIX = 'morefields:';
 
   // Campos customizados (GLPI 11) da definição do ativo customizado, no mesmo
   // formato do dropdown unificado: "custom:assetfield:<system_name>" => rótulo.
@@ -360,6 +378,13 @@ class PluginAssetprefixesPrefixField extends CommonDBTM {
     }
 
     global $DB;
+
+    if (strpos($field['field_name'], self::MOREFIELDS_PREFIX) === 0) {
+      $label = class_exists('\\GlpiPlugin\\Morefields\\Api')
+        ? \GlpiPlugin\Morefields\Api::describe((int)substr($field['field_name'], strlen(self::MOREFIELDS_PREFIX)))
+        : null;
+      return 'More Fields — ' . ($label ?? __('campo removido ou plugin inativo', 'assetprefixes'));
+    }
 
     $asset_field = self::getCustomAssetFieldDefinition($itemtype, $field['field_name']);
     if ($asset_field !== null) {
