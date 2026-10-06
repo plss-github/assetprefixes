@@ -236,9 +236,12 @@ class PluginAssetprefixesPrefix extends CommonDBTM {
     }
   }
 
-  // Multi-select de subtipos (0 = global) para criar vários padrões de uma vez.
-  // $exclude_ids: subtipos que já têm padrão configurado nesta família (0 = global já usado).
-  static function showSubtypeMultiselect(string $itemtype, array $exclude_ids = []): void {
+  // Multi-select de subtipos (0 = global) de um padrão.
+  // $exclude_ids: subtipos que já pertencem a OUTRO padrão desta família.
+  // $selected: subtipos do padrão sendo editado.
+  // $form_id: associa os campos a um <form> fora da árvore DOM (linha de tabela —
+  // ver PrefixPattern::showForPrefix).
+  static function showSubtypeMultiselect(string $itemtype, array $exclude_ids = [], array $selected = [], ?string $form_id = null): void {
     // Sempre inicializado: sem isto, um itemtype sem subtipos cadastrados (ou
     // sem classe de subtipo) deixaria $options indefinido → showFromArray(null)
     // estoura em GLPI 11. Opção 0 = padrão global (fallback da família).
@@ -246,16 +249,28 @@ class PluginAssetprefixesPrefix extends CommonDBTM {
     // customizado (tabela de tipos compartilhada entre todas as definições).
     $options = [0 => __('Global (todos os subtipos)', 'assetprefixes')] + self::getSubtypeChoices($itemtype);
 
-    // Remove subtipos que já têm um padrão nesta família (NULL = global → chave 0).
     foreach ($exclude_ids as $excluded) {
-      unset($options[$excluded === null ? 0 : (int)$excluded]);
+      unset($options[(int)$excluded]);
+    }
+    // Subtipo vinculado mas já removido do GLPI: continua visível (e preservado
+    // ao salvar) em vez de sumir silenciosamente.
+    foreach ($selected as $id) {
+      $options[(int)$id] ??= '#' . (int)$id;
     }
 
-    Dropdown::showFromArray('subtype_id', $options, [
+    $html = Dropdown::showFromArray('subtype_id', $options, [
       'multiple' => true,
-      'values'   => [],
+      'values'   => array_map('intval', $selected),
       'width'    => '100%',
+      'display'  => false,
     ]);
+
+    // showFromArray não aceita atributos arbitrários no <select> (nem no hidden
+    // que ele emite pra seleção vazia), então o form="..." é injetado aqui.
+    if ($form_id !== null) {
+      $html = preg_replace('/<(select|input)\b/', '<$1 form="' . htmlspecialchars($form_id) . '"', $html);
+    }
+    echo $html;
   }
 
   // -------------------------------------------------------------------------
@@ -305,10 +320,10 @@ class PluginAssetprefixesPrefix extends CommonDBTM {
           : max(0, (int)$row['counter_start'] - 1);
         $DB->insert(PluginAssetprefixesPrefixPattern::getTable(), [
           'plugin_assetprefixes_prefixes_id' => $row['id'],
-          'subtype_id'                       => $row['subtype_id'],
           'pattern'                          => $row['pattern'],
           'counter_current'                  => $counter_current,
         ]);
+        PluginAssetprefixesPrefixPattern::linkSubtypes((int)$row['id'], (int)$DB->insertId(), [(int)($row['subtype_id'] ?? 0)]);
       }
 
       $migration->dropField($table, 'subtype_field');
@@ -337,6 +352,9 @@ class PluginAssetprefixesPrefix extends CommonDBTM {
   public function cleanDBonPurge() {
     global $DB;
     $DB->delete(PluginAssetprefixesPrefixField::getTable(), [
+      'plugin_assetprefixes_prefixes_id' => $this->fields['id'],
+    ]);
+    $DB->delete(PluginAssetprefixesPrefixPattern::SUBTYPES_TABLE, [
       'plugin_assetprefixes_prefixes_id' => $this->fields['id'],
     ]);
     $DB->delete(PluginAssetprefixesPrefixPattern::getTable(), [

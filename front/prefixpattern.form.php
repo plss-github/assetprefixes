@@ -9,44 +9,46 @@ Session::checkRight('config', UPDATE);
 $prefix_id = (int)($_POST['plugin_assetprefixes_prefixes_id'] ?? 0);
 $back      = PluginAssetprefixesPrefix::getFormURL() . "?id=$prefix_id&forcetab=PluginAssetprefixesPrefix\$1";
 
-if (isset($_POST['add'])) {
-  $pattern     = trim($_POST['pattern'] ?? '');
-  $counter     = (int)($_POST['counter'] ?? 0);
-  $subtype_ids = array_unique(array_map('intval', (array)($_POST['subtype_id'] ?? [])));
+// Multiselect de subtipos: 0 = global. O hidden vazio que o GLPI emite pra
+// seleção vazia chega como "" e é descartado aqui.
+$subtype_ids = array_values(array_unique(array_map(
+  'intval',
+  array_filter((array)($_POST['subtype_id'] ?? []), fn($v) => $v !== '')
+)));
 
-  if ($pattern !== '' && $prefix_id > 0 && !empty($subtype_ids)) {
-    foreach ($subtype_ids as $subtype_id) {
-      $subtype_id = $subtype_id ?: null;
-      if (!PluginAssetprefixesPrefixPattern::validatePattern($prefix_id, $pattern, $subtype_id)) {
-        continue;
-      }
-      $entry = new PluginAssetprefixesPrefixPattern();
-      $entry->add([
-        'plugin_assetprefixes_prefixes_id' => $prefix_id,
-        'subtype_id'                       => $subtype_id,
-        'pattern'                          => $pattern,
-        'counter_current'                  => $counter,
-      ]);
+if (isset($_POST['add'])) {
+  $pattern = trim($_POST['pattern'] ?? '');
+  $counter = (int)($_POST['counter'] ?? 0);
+
+  if ($pattern !== '' && $prefix_id > 0
+      && PluginAssetprefixesPrefixPattern::validatePattern($prefix_id, $pattern, $subtype_ids)) {
+    $entry = new PluginAssetprefixesPrefixPattern();
+    if ($pattern_id = $entry->add([
+      'plugin_assetprefixes_prefixes_id' => $prefix_id,
+      'pattern'                          => $pattern,
+      'counter_current'                  => $counter,
+    ])) {
+      PluginAssetprefixesPrefixPattern::linkSubtypes($prefix_id, (int)$pattern_id, $subtype_ids);
     }
   }
   Html::redirect($back);
 }
 
 if (isset($_POST['update'])) {
-  $id         = (int)($_POST['id'] ?? 0);
-  $pattern    = trim($_POST['pattern'] ?? '');
-  $subtype_id = (int)($_POST['subtype_id'] ?? 0) ?: null;
-  $counter    = (int)($_POST['counter'] ?? 0);
+  $id      = (int)($_POST['id'] ?? 0);
+  $pattern = trim($_POST['pattern'] ?? '');
+  $counter = (int)($_POST['counter'] ?? 0);
 
   if ($id > 0 && $pattern !== ''
-      && PluginAssetprefixesPrefixPattern::validatePattern($prefix_id, $pattern, $subtype_id, $id)) {
+      && PluginAssetprefixesPrefixPattern::validatePattern($prefix_id, $pattern, $subtype_ids, $id)) {
     $entry = new PluginAssetprefixesPrefixPattern();
-    $entry->update([
+    if ($entry->update([
       'id'              => $id,
-      'subtype_id'      => $subtype_id,
       'pattern'         => $pattern,
       'counter_current' => $counter,
-    ]);
+    ])) {
+      PluginAssetprefixesPrefixPattern::linkSubtypes($prefix_id, $id, $subtype_ids);
+    }
   }
   Html::redirect($back);
 }

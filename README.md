@@ -17,9 +17,11 @@ Example: pattern `NB0000000` with counter `103` → the next Notebook created ge
   Peripheral, Phone, Printer) scoped to an entity (with sub-entity inheritance)
 - **GLPI 11 custom assets** — every active custom asset definition shows up as an asset
   type of its own, with its types as subtypes and its custom fields as target fields
-- **Patterns per subtype** — inside a family, define a numbering pattern + counter per
-  asset subtype (e.g. one pattern for *Notebook*, another for *Desktop*), plus an optional
-  **global** pattern used as fallback when the asset's subtype has no specific pattern
+- **Patterns shared by subtypes** — inside a family, define a numbering pattern + counter
+  and pick which asset subtypes use it (e.g. *Notebook* and *Laptop* both on `NB0000000`,
+  *Desktop* on `DT0000000`). All subtypes of a pattern advance the **same counter**, so they
+  never issue duplicate numbers. An optional **global** pattern is the fallback for subtypes
+  not assigned to any pattern
 - **Configurable pattern mask** — the contiguous run of `0`s defines the zero-padding
   width; text before/after the mask is preserved (`NB0000000` → `NB` + 7-digit number)
 - **Target fields** — choose which field(s) receive the generated value, from a single
@@ -75,10 +77,16 @@ A family groups the numbering rules for a single asset type within an entity.
 Open the family and go to the **Patterns by subtype** tab.
 
 - Select one or more subtypes (or **Global — all subtypes**) and define a **pattern** and
-  a starting **counter**; one row is created per selected subtype
+  a starting **counter**; **one** row is created, shared by every selected subtype
+- All subtypes of a row share its counter: creating a *Notebook* then a *Laptop* on the
+  same `NB0000000` row yields `NB0000001`, `NB0000002`
+- A subtype belongs to at most one pattern per family, and a pattern text can exist only
+  once per family — to add a subtype to an existing prefix, edit that row's subtype list
 - **Counter** is the last number already issued — the next asset receives *counter + 1*
-- Each row is editable inline (pattern / counter) and shows a live **Next value** preview
-- Resolution order for a new asset: exact subtype match first, then the global pattern
+- Each row is editable inline (subtypes / pattern / counter) and shows a live **Next value**
+  preview
+- Resolution order for a new asset: the pattern containing its subtype, then the global
+  pattern
 
 ### 3 — Target fields
 
@@ -166,6 +174,10 @@ tell "no family matched" apart from "the write failed".
 
 - **Burned numbers / gaps:** if an asset insert fails after a number was issued, that
   number is skipped. Gaps are accepted by design (simpler and safe).
+- **Upgrade from 1.2.x:** the old model had one row (and one counter) per subtype. On
+  upgrade, rows of the same family with the **identical pattern text** are merged into a
+  single shared pattern; the merged counter is the **highest** of them, so no number already
+  issued is reissued. Subtype-restricted target fields are moved to the merged pattern.
 - **Counter is the source of truth:** a single editable *Counter* field per pattern
   (last-issued number) avoids the inconsistency of separate start/current values.
 

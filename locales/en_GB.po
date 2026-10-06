@@ -108,10 +108,6 @@ msgstr "Global (all subtypes)"
 msgid "Sem subtipo disponível — prefixo global"
 msgstr "No subtype available — global prefix"
 
-#: inc/prefixpattern.class.php:172
-msgid "Mesmo padrão e contador serão aplicados a cada subtipo selecionado."
-msgstr "The same pattern and counter will be applied to each selected subtype."
-
 #: ajax/getFields.php:93
 msgid "Campos nativos"
 msgstr "Native fields"
@@ -212,10 +208,6 @@ msgstr[1] "Patterns by subtype"
 msgid "O padrão deve conter ao menos um \"0\" para indicar a máscara de numeração."
 msgstr "The pattern must contain at least one \"0\" to indicate the numbering mask."
 
-#: inc/prefixpattern.class.php:107
-msgid "Já existe um padrão configurado para este subtipo nesta família."
-msgstr "A pattern is already configured for this subtype in this family."
-
 #: inc/prefixpattern.class.php:134
 msgid "Adicionar padrão"
 msgstr "Add pattern"
@@ -293,3 +285,23 @@ msgstr "Restrict to a specific pattern to use different fields per subtype."
 #: inc/prefixfield.class.php
 msgid "Padrão removido"
 msgstr "Pattern removed"
+
+#: inc/prefixpattern.class.php
+msgid "Selecione ao menos um subtipo para o padrão."
+msgstr "Select at least one subtype for the pattern."
+
+#: inc/prefixpattern.class.php
+msgid "O padrão \"%s\" já existe nesta família — edite-o e adicione os subtipos a ele, para que todos compartilhem o mesmo contador."
+msgstr "Pattern \"%s\" already exists in this family — edit it and add the subtypes to it, so they all share the same counter."
+
+#: inc/prefixpattern.class.php
+msgid "Um dos subtipos selecionados já pertence a outro padrão nesta família."
+msgstr "One of the selected subtypes already belongs to another pattern in this family."
+
+#: inc/prefixpattern.class.php
+msgid "Todos os subtipos selecionados compartilham o mesmo padrão e o mesmo contador."
+msgstr "All selected subtypes share the same pattern and the same counter."
+
+#: inc/prefixpattern.class.php
+msgid "Subtipos"
+msgstr "Subtypes"

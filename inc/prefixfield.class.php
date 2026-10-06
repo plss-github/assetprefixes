@@ -265,11 +265,11 @@ class PluginAssetprefixesPrefixField extends CommonDBTM {
     $fields    = self::getFieldsForPrefix($prefix_id);
     $patterns  = PluginAssetprefixesPrefixPattern::getPatternsForPrefix($prefix_id);
 
-    // Rótulo de cada padrão (id => "Subtipo — Padrão"), reaproveitado no
+    // Rótulo de cada padrão (id => "Padrão (Subtipo, Subtipo)"), reaproveitado no
     // dropdown de "Aplicar a" e na coluna "Aplica a" da listagem abaixo.
     $pattern_labels = [];
     foreach ($patterns as $p) {
-      $pattern_labels[$p['id']] = PluginAssetprefixesPrefixPattern::getSubtypeDisplayName($itemtype, $p['subtype_id'] ?? null) . ' — ' . $p['pattern'];
+      $pattern_labels[$p['id']] = $p['pattern'] . ' (' . PluginAssetprefixesPrefixPattern::getSubtypesDisplayName($itemtype, $p['subtype_ids']) . ')';
     }
 
     if ($canedit) {
