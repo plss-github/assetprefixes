@@ -34,7 +34,7 @@ function plugin_init_assetprefixes() {
 
 function plugin_version_assetprefixes() {
   return [
-    'name'         => 'Asset Prefixes',
+    'name'         => __('Asset Prefixes', 'assetprefixes'),
     'version'      => PLUGIN_ASSETPREFIXES_VERSION,
     'author'       => 'Ampris',
     'homepage'     => '',

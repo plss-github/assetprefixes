@@ -17,7 +17,7 @@ msgstr ""
 
 #: inc/config.class.php:10
 msgid "Asset Prefixes"
-msgstr "Prefixos de Ativo"
+msgstr "Prefixo de Ativos"
 
 #: inc/config.class.php:82
 msgid "Validar unicidade do valor gerado antes de gravar"
